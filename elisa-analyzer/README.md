@@ -149,6 +149,13 @@ An OD outside the fitted asymptotes has no real solution and is returned as
 convention — average the ODs first, then back-calculate once — is reported
 alongside as `Conc from Mean OD`. `Final Conc = Mean Conc × Dilution Factor`.
 
+**Dilution.** The factor is applied per well, so the *Calculated Concentration*
+heat map on the Results tab and the matching Plate Maps grid in the Excel report
+show the same dilution-corrected numbers as the results table — no mental
+arithmetic between views. Standards and blanks are always read neat. The map
+colours on a log scale when the plate spans more than two orders of magnitude,
+which it usually does once dilutions are in play.
+
 **Precision.** %CV = SD / mean × 100 with the sample standard deviation
 (`ddof = 1`), reported on both OD and concentration. Groups above the threshold
 are flagged.

@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 
 matplotlib.rcParams["figure.max_open_warning"] = 0
 import numpy as np  # noqa: E402
-from matplotlib.colors import LinearSegmentedColormap  # noqa: E402
+from matplotlib.colors import LinearSegmentedColormap, LogNorm  # noqa: E402
 from matplotlib.ticker import FuncFormatter  # noqa: E402
 
 from .analysis import AnalysisResult  # noqa: E402
@@ -166,16 +166,48 @@ def residual_figure(result: AnalysisResult, log_x: bool = True, figsize=(7.6, 2.
     return fig
 
 
+def concentration_label(v: float) -> str:
+    """Readable well label across the range a plate spans, without 1.7e+04 forms."""
+    a = abs(v)
+    if a == 0:
+        return "0"
+    if a >= 1000:
+        return f"{v:,.0f}"
+    if a >= 100:
+        return f"{v:.1f}"
+    if a >= 1:
+        return f"{v:.2f}"
+    return f"{v:.3g}"
+
+
+def absorbance_label(v: float) -> str:
+    return f"{v:.3f}"
+
+
 _HEAT = LinearSegmentedColormap.from_list(
     "elisa", ["#f7fbfd", "#cfe3ef", "#8ab4d0", "#41729f", "#1b3a56"]
 )
 
 
 def plate_heatmap_figure(matrix: np.ndarray, title: str = "Plate Absorbance",
-                         annotate: bool = True, figsize=(9.2, 4.4), dpi=150):
+                         annotate: bool = True, figsize=(9.2, 4.4), dpi=150,
+                         value_format=absorbance_label, log_color: bool | None = None):
+    """Heat map of one value per well.
+
+    ``log_color`` colours on a log scale; left as None it switches itself on when
+    the values span more than two orders of magnitude, which is the normal case
+    for concentrations and would otherwise wash the whole plate into one shade.
+    """
     fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
     data = np.asarray(matrix, dtype=float)
-    im = ax.imshow(data, cmap=_HEAT, aspect="auto")
+
+    positive = data[np.isfinite(data) & (data > 0)]
+    if log_color is None:
+        log_color = positive.size > 1 and positive.max() / positive.min() > 100
+    norm = None
+    if log_color and positive.size:
+        norm = LogNorm(vmin=float(positive.min()), vmax=float(positive.max()))
+    im = ax.imshow(data, cmap=_HEAT, aspect="auto", norm=norm)
     ax.set_xticks(range(N_COLS), [str(c) for c in range(1, N_COLS + 1)])
     ax.set_yticks(range(N_ROWS), ROWS)
     ax.tick_params(colors=MUTED, length=0, labelsize=9)
@@ -187,16 +219,19 @@ def plate_heatmap_figure(matrix: np.ndarray, title: str = "Plate Absorbance",
     ax.tick_params(which="minor", length=0)
 
     if annotate:
-        finite = data[np.isfinite(data)]
-        mid = (finite.max() + finite.min()) / 2 if finite.size else 0
         for r in range(N_ROWS):
             for c in range(N_COLS):
                 v = data[r, c]
                 if not np.isfinite(v):
                     ax.text(c, r, "–", ha="center", va="center", fontsize=8, color=MUTED)
                     continue
-                ax.text(c, r, f"{v:.3f}", ha="center", va="center", fontsize=7,
-                        color="white" if v > mid else INK)
+                try:  # position within the colour ramp decides the label colour
+                    shade = float(im.norm(v))
+                except Exception:  # noqa: BLE001 - masked/out-of-range under LogNorm
+                    shade = 0.0
+                label = value_format(v) if callable(value_format) else value_format.format(v)
+                ax.text(c, r, label, ha="center", va="center", fontsize=7,
+                        color="white" if np.isfinite(shade) and shade > 0.55 else INK)
     cbar = fig.colorbar(im, ax=ax, fraction=0.025, pad=0.02)
     cbar.outline.set_visible(False)
     cbar.ax.tick_params(colors=MUTED, labelsize=8, length=0)

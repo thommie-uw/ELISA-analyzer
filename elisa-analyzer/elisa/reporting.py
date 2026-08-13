@@ -210,8 +210,8 @@ def build_report(
                           "Raw Absorbance", r, layout=layout)
     r = _write_plate_grid(ws5, plate_matrix(result.wells, "OD Corrected"),
                           "Blank-Corrected Absorbance", r, layout=layout)
-    r = _write_plate_grid(ws5, plate_matrix(result.wells, "Conc"),
-                          f"Back-Calculated Concentration ({units})", r,
+    r = _write_plate_grid(ws5, plate_matrix(result.wells, "Conc Final"),
+                          f"Calculated Concentration ({units}) - includes dilution factor", r,
                           layout=layout, number_format="0.00")
 
     out = io.BytesIO()

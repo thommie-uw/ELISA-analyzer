@@ -29,6 +29,7 @@ from elisa.layout import (
 from elisa.parsing import read_plates
 from elisa.plate import N_COLS, N_ROWS, well_id
 from elisa.plotting import (
+    concentration_label,
     figure_to_png,
     plate_heatmap_figure,
     residual_figure,
@@ -258,8 +259,8 @@ with tab_layout:
 
     with left:
         st.subheader("Raw Absorbance")
-        show(plate_heatmap_figure(values, title=f"{plate.name} — Raw OD"),
-                  use_container_width=True)
+        show(plate_heatmap_figure(values, title=f"{plate.name} — Raw OD", log_color=False),
+             use_container_width=True)
 
     with right:
         st.subheader("Plate Layout")
@@ -564,13 +565,21 @@ if result is not None:
             st.dataframe(result.controls, hide_index=True, use_container_width=True)
 
         st.divider()
-        st.subheader("Back-Calculated Concentrations Across the Plate")
+        st.subheader("Calculated Concentration")
+        n_diluted = int((result.wells["Dilution"] != 1).sum())
         show(
             plate_heatmap_figure(
-                plate_matrix(result.wells, "Conc"),
-                title=f"Concentration per Well ({units})",
+                plate_matrix(result.wells, "Conc Final"),
+                title=f"Calculated Concentration per Well ({units})",
+                value_format=concentration_label,
             ),
             use_container_width=True,
+        )
+        st.caption(
+            f"Each well read off the standard curve and multiplied by its dilution factor"
+            + (f" — {n_diluted} well(s) carry a factor other than 1. " if n_diluted else ". ")
+            + "Standards and blanks are shown neat. “–” marks wells that fall off "
+            "the curve or are unused."
         )
 
     # ----------------------------------------------------------------------
@@ -606,7 +615,9 @@ if result is not None:
         st.subheader("Blank-Corrected Absorbance")
         show(
             plate_heatmap_figure(
-                plate_matrix(result.wells, "OD Corrected"), title="Corrected OD per Well"
+                plate_matrix(result.wells, "OD Corrected"),
+                title="Corrected OD per Well",
+                log_color=False,
             ),
             use_container_width=True,
         )

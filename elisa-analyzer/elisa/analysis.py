@@ -91,6 +91,15 @@ def _fmt(v, nd=3):
     return round(float(v), nd)
 
 
+def _dilution_for(dilutions: dict[str, float], label: str) -> float:
+    """Dilution factor for a sample, defaulting to 1 for blank/zero/missing entries."""
+    try:
+        value = float(dilutions.get(label, 1.0) or 1.0)
+    except (TypeError, ValueError):
+        return 1.0
+    return value if np.isfinite(value) and value > 0 else 1.0
+
+
 def _cv(values: np.ndarray) -> float:
     vals = np.asarray([v for v in values if np.isfinite(v)], dtype=float)
     if vals.size < 2:
@@ -189,6 +198,13 @@ def analyse(
     # ---------------- back-calculate every well ----------------
     wells["Conc"] = fit.inverse(wells["OD Corrected"].to_numpy(dtype=float))
     wells.loc[wells["Role"] == EMPTY, "Conc"] = np.nan
+
+    # Dilution applies to unknowns only - standards and blanks are read neat.
+    wells["Dilution"] = [
+        _dilution_for(opts.dilutions, label) if role in (SAMPLE, CONTROL) else 1.0
+        for role, label in zip(wells["Role"], wells["Label"])
+    ]
+    wells["Conc Final"] = wells["Conc"] * wells["Dilution"]
 
     # quantification limits = lowest / highest non-zero standard actually used
     used_conc = std_wells["Nominal"].to_numpy(dtype=float)
@@ -293,7 +309,7 @@ def _summarise_unknowns(
         )
         mean_conc = float(concs_ok.mean()) if concs_ok.size else np.nan
         sd_conc = float(concs_ok.std(ddof=1)) if concs_ok.size > 1 else np.nan
-        dil = float(opts.dilutions.get(label, 1.0) or 1.0)
+        dil = _dilution_for(opts.dilutions, label)
 
         n_unquant = int(np.isfinite(ods).sum() - concs_ok.size)
         if not np.isfinite(mean_conc):
@@ -365,6 +381,7 @@ def display_wells(wells: pd.DataFrame, units: str) -> pd.DataFrame:
         columns={
             "Nominal": f"Nominal ({units})",
             "Conc": f"Back-Calculated ({units})",
+            "Conc Final": f"Calculated Conc ({units})",
         }
     )
 

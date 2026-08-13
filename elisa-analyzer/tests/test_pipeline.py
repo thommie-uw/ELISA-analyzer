@@ -308,6 +308,48 @@ def test_dilution_factor_is_applied():
                   b.loc["Sample02", "Final Conc (pg/mL)"], 1e-9)
 
 
+def test_per_well_concentration_includes_dilution():
+    """The plate map must show dilution-corrected values, matching the results table."""
+    from elisa.analysis import plate_matrix
+
+    plate, tpl = _demo()
+    res = analyse(plate.values, tpl["layout"], tpl["standards"],
+                  AnalysisOptions(units="pg/mL", dilutions={"Sample02": 20.0}))
+    wells = res.wells.set_index("Well")
+    target = res.samples.set_index("Sample").loc["Sample02"]
+    target_wells = [w.strip() for w in target["Wells"].split(",")]
+
+    for w in target_wells:
+        assert approx(wells.loc[w, "Conc Final"], wells.loc[w, "Conc"] * 20.0, 1e-9)
+        assert wells.loc[w, "Dilution"] == 20.0
+
+    # the map average must agree with the reported final concentration
+    finals = wells.loc[target_wells, "Conc Final"].to_numpy(dtype=float)
+    assert approx(float(np.nanmean(finals)), target["Final Conc (pg/mL)"], 1e-9)
+
+    # standards and blanks are read neat, never scaled
+    neat = res.wells[res.wells["Role"].isin(["standard", "blank"])]
+    assert (neat["Dilution"] == 1.0).all()
+    assert np.allclose(neat["Conc Final"], neat["Conc"], equal_nan=True)
+
+    # and the matrix handed to the heat map carries the corrected values
+    mat = plate_matrix(res.wells, "Conc Final")
+    r, c = "ABCDEFGH".index(target_wells[0][0]), int(target_wells[0][1:]) - 1
+    assert approx(mat[r, c], wells.loc[target_wells[0], "Conc Final"], 1e-9)
+
+
+def test_dilution_defaults_are_safe():
+    """Missing, zero or nonsense dilution entries fall back to 1, never to zero."""
+    plate, tpl = _demo()
+    res = analyse(plate.values, tpl["layout"], tpl["standards"],
+                  AnalysisOptions(units="pg/mL",
+                                  dilutions={"Sample01": 0.0, "Sample02": None,
+                                             "Sample03": float("nan")}))
+    assert (res.wells["Dilution"] > 0).all()
+    diluted = res.wells[res.wells["Label"].isin(["Sample01", "Sample02", "Sample03"])]
+    assert (diluted["Dilution"] == 1.0).all()
+
+
 def test_excluding_a_well_changes_the_group():
     plate, tpl = _demo()
     base = analyse(plate.values, tpl["layout"], tpl["standards"], AnalysisOptions(units="pg/mL"))
